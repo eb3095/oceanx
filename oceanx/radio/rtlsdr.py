@@ -1,4 +1,4 @@
-"""HackRF One IQ capture via hackrf_transfer."""
+"""RTL-SDR IQ capture via rtl_sdr."""
 
 from __future__ import annotations
 
@@ -6,24 +6,22 @@ import os
 import select
 import shutil
 import subprocess
+import time
 from typing import Optional
 
+from oceanx.config import CHUNK_SAMPLES, RTL_SDR_BINARY_PATHS, SAMPLE_RATE, RadioConfig
 from oceanx.radio.process_util import stop_subprocess
-from oceanx.config import (
-    CHUNK_SAMPLES,
-    HACKRF_BINARY_PATHS,
-    SAMPLE_RATE,
-    AIS_CENTER_HZ,
-    RadioConfig,
-)
+
+_USB_SETTLE_SEC = 0.25
+_last_usb_release = 0.0
 
 
-class HackRFReceiver:
+class RtlSdrReceiver:
     def __init__(
         self,
         config: RadioConfig,
         *,
-        freq_hz: int = AIS_CENTER_HZ,
+        freq_hz: int,
         sample_rate: int = SAMPLE_RATE,
     ) -> None:
         self._config = config
@@ -34,32 +32,31 @@ class HackRFReceiver:
 
     @staticmethod
     def find_binary() -> Optional[str]:
-        for candidate in HACKRF_BINARY_PATHS:
+        for candidate in RTL_SDR_BINARY_PATHS:
             path = shutil.which(candidate) if "/" not in candidate else candidate
             if path and os.path.isfile(path) and os.access(path, os.X_OK):
                 return path
         return None
 
     def start(self) -> None:
-        hackrf = self.find_binary()
-        if not hackrf:
-            raise RuntimeError(
-                "hackrf_transfer not found. Install with: brew install hackrf"
-            )
+        global _last_usb_release
+        delay = _USB_SETTLE_SEC - (time.monotonic() - _last_usb_release)
+        if delay > 0:
+            time.sleep(delay)
+        rtl_sdr = self.find_binary()
+        if not rtl_sdr:
+            raise RuntimeError("rtl_sdr not found. Install with: brew install rtl-sdr")
         cmd = [
-            hackrf,
-            "-r",
-            "-",
+            rtl_sdr,
             "-f",
             str(self._freq_hz),
             "-s",
             str(self._sample_rate),
-            "-l",
-            str(self._config.lna_gain),
             "-g",
-            str(self._config.vga_gain),
-            "-a",
-            "1" if self._config.amp_enable else "0",
+            str(self._config.tuner_gain),
+            "-p",
+            str(self._config.ppm_error),
+            "-",
         ]
         self._stderr = b""
         self._proc = subprocess.Popen(
@@ -105,13 +102,15 @@ class HackRFReceiver:
         detail = self._stderr.decode("utf-8", errors="replace").strip()
         if detail:
             line = detail.splitlines()[-1]
-            return f"hackrf_transfer exited: {line}"
-        return "hackrf_transfer exited. Check HackRF USB connection."
+            return f"rtl_sdr exited: {line}"
+        return "rtl_sdr exited. Check RTL-SDR USB connection."
 
     def stop(self, *, fast: bool = False) -> None:
+        global _last_usb_release
         if self._proc:
             stop_subprocess(self._proc, fast=fast, prefer_sigint=not fast)
             self._proc = None
+            _last_usb_release = time.monotonic()
 
     def _poll_stderr(self) -> None:
         if not self._proc or not self._proc.stderr:

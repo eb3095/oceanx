@@ -21,16 +21,22 @@ class AisMonitor:
         tracker: VesselTracker,
         *,
         log_writer: LogWriter | None = None,
+        backend: str = "hackrf",
     ) -> None:
         self.channels = list(channels)
         self.tracker = tracker
+        self.backend = backend
         self._demod = GMSKDemodulator()
         self._log = log_writer
         self.recent_messages: List[str] = []
 
     def process_iq(self, raw: bytes | np.ndarray, now: float | None = None) -> int:
         now = now or time.time()
-        iq = IQConverter.from_bytes(raw) if isinstance(raw, (bytes, bytearray)) else raw
+        iq = (
+            IQConverter.from_radio_bytes(raw, self.backend)
+            if isinstance(raw, (bytes, bytearray))
+            else raw
+        )
         if iq.size == 0:
             return 0
         decoded_count = 0

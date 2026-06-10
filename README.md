@@ -1,6 +1,6 @@
 # OceanX
 
-**OceanX** is a terminal-based marine monitoring app for the [HackRF One](https://greatscottgadgets.com/hackrf/one/) focused on **AIS vessel tracking** and **marine VHF voice monitoring** on coastal and inland waterways.
+**OceanX** is a terminal-based marine monitoring app for SDR backends on macOS focused on **AIS vessel tracking** and **marine VHF voice monitoring** on coastal and inland waterways.
 
 ```
    ___                    __  __
@@ -14,7 +14,7 @@
 
 - AIS dashboard (default) on 161.975 / 162.025 MHz with vessel table and message feed
 - Marine radio dashboard on 156-163 MHz with channel list, waveform, squelch, and STT transcript
-- HackRF retune between AIS and radio dashboards in one terminal UI
+- SDR retune between AIS and radio dashboards in one terminal UI
 - Config auto-created at `~/.config/oceanx/config.json`
 - Logs written to `~/.oceanx/logs/`
   - `ais.log` for AIS message summaries
@@ -22,7 +22,7 @@
 
 ## Screenshots
 
-Examples from a live HackRF session (macOS terminal, Rich UI):
+Examples from a live SDR session (macOS terminal, Rich UI):
 
 ### AIS dashboard
 
@@ -40,10 +40,14 @@ Marine channel list, braille signal scope, live transcript, squelch/volume contr
 
 - macOS
 - Python 3.11+
-- HackRF tools
+- One SDR backend:
+  - HackRF (`hackrf_transfer`)
+  - RTL-SDR (`rtl_sdr`)
 
 ```bash
 brew install hackrf
+# or:
+brew install rtl-sdr
 ```
 
 ## Quick Start
@@ -66,9 +70,12 @@ OceanX stores config in `~/.config/oceanx/config.json` and creates defaults on f
 
 | Key | Type | Default | Description |
 |---|---|---|---|
+| `backend` | string | `"auto"` | SDR backend: `"auto"`, `"hackrf"`, or `"rtlsdr"` |
 | `lna` | int | `32` | HackRF LNA gain |
 | `vga` | int | `48` | HackRF VGA gain |
 | `amp_enable` | bool | `true` | Enable HackRF RF amp |
+| `tuner_gain` | int | `40` | RTL-SDR tuner gain |
+| `ppm_error` | int | `0` | RTL-SDR PPM correction |
 | `sound_enabled` | bool | `true` | Play discovery ping on first MMSI seen |
 | `refresh_hz` | float | `2.0` | UI refresh frequency |
 | `show_banner` | bool | `true` | Show startup banner |
@@ -87,7 +94,7 @@ Global:
 
 - `A` - AIS dashboard
 - `R` - Radio dashboard
-- `Ctrl+C` - Exit
+- `Ctrl+C` - quit (fast teardown; second press force-exits)
 
 AIS dashboard:
 

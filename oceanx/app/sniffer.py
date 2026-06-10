@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-import signal
 import time
 from typing import Literal
 
 import numpy as np
 from rich.live import Live
 
+from oceanx.app.shutdown import ShutdownCoordinator
 from oceanx.ais.monitor import AisMonitor
 from oceanx.config import AIS_CENTER_HZ, SnifferConfig
 from oceanx.decode.tracker import VesselTracker
 from oceanx.log_writer import LogWriter
-from oceanx.radio.hackrf import HackRFReceiver
+from oceanx.radio.receiver import make_receiver
 from oceanx.radio.voice_monitor import VoiceMonitor
 from oceanx.ui.display import ConsoleDisplay
 from oceanx.ui.keyboard import drain_keys, restore_terminal, terminal_session
@@ -29,14 +29,19 @@ class OceanXSniffer:
         self.tracker = VesselTracker()
         self.display = ConsoleDisplay(config, self._log_writer)
         self.voice_monitor = VoiceMonitor(
-            config.radio_channels, log_writer=self._log_writer
+            config.radio_channels,
+            log_writer=self._log_writer,
+            backend=config.radio.backend,
         )
         self.radio_display = RadioDisplay(self.voice_monitor, config.radio)
         self.ais_monitor = AisMonitor(
-            config.ais_channels, self.tracker, log_writer=self._log_writer
+            config.ais_channels,
+            self.tracker,
+            log_writer=self._log_writer,
+            backend=config.radio.backend,
         )
         self.dashboard: DashboardMode = "ais"
-        self.receiver = HackRFReceiver(config.radio, freq_hz=self._tuned_frequency())
+        self.receiver = make_receiver(config.radio, freq_hz=self._tuned_frequency())
 
     def _tuned_frequency(self) -> int:
         if self.dashboard == "radio":
@@ -91,15 +96,17 @@ class OceanXSniffer:
             last_render = now
         return True, last_render
 
+    def _teardown_live(self) -> None:
+        self.voice_monitor.shutdown()
+        if self.receiver.running:
+            self.receiver.stop(fast=True)
+        self._log_writer.close()
+
     def run_live(self) -> None:
         self.receiver.start()
-        running = True
-
-        def handle_sigint(_signum: int, _frame: object) -> None:
-            nonlocal running
-            running = False
-
-        signal.signal(signal.SIGINT, handle_sigint)
+        shutdown = ShutdownCoordinator()
+        shutdown.on_exit(self._teardown_live)
+        shutdown.install()
         last_render = 0.0
         try:
             with terminal_session():
@@ -110,12 +117,14 @@ class OceanXSniffer:
                     screen=True,
                     transient=False,
                 ) as live:
-                    while running:
+                    while shutdown.running:
                         now = time.time()
-                        running, last_render = self._handle_keys(live, last_render)
-                        if not running:
+                        shutdown.running, last_render = self._handle_keys(live, last_render)
+                        if not shutdown.running:
                             break
-                        chunk = self.receiver.read_chunk()
+                        chunk = self.receiver.read_chunk(
+                            timeout=0.0 if not shutdown.running else 0.05
+                        )
                         if chunk:
                             if self.dashboard == "ais":
                                 self.ais_monitor.process_iq(chunk, now=now)
@@ -125,16 +134,12 @@ class OceanXSniffer:
                             else:
                                 self.voice_monitor.process_iq(chunk, now)
                         elif self.receiver.exited:
-                            raise RuntimeError(
-                                "hackrf_transfer exited. Check HackRF USB connection."
-                            )
+                            raise RuntimeError(self.receiver.exit_message())
                         if now - last_render >= 1.0 / self.config.refresh_hz:
                             live.update(self._render(now))
                             last_render = now
         finally:
-            self.voice_monitor.shutdown()
-            self.receiver.stop()
-            self._log_writer.close()
+            shutdown.cleanup()
             restore_terminal()
 
     def run_file(self, path: str) -> None:

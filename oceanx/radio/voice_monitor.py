@@ -40,9 +40,14 @@ class TranscriptLine:
 
 class VoiceMonitor:
     def __init__(
-        self, channels: Sequence = (), *, log_writer: LogWriter | None = None
+        self,
+        channels: Sequence = (),
+        *,
+        log_writer: LogWriter | None = None,
+        backend: str = "hackrf",
     ) -> None:
         self._log = log_writer
+        self.backend = backend
         self._channels = list(channels or COMMON_MARINE_CHANNELS)
         self.selected_index = 0
         self.page_index = 0
@@ -163,7 +168,7 @@ class VoiceMonitor:
 
     def process_iq(self, raw: bytes, now: float | None = None) -> None:
         now = now or time.time()
-        iq = IQConverter.from_bytes(raw)
+        iq = IQConverter.from_radio_bytes(raw, self.backend)
         if iq.size == 0:
             return
         audio = demod_am(iq, demod=self._demod)

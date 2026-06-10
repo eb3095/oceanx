@@ -12,6 +12,7 @@ from oceanx.config import SnifferConfig
 from oceanx.config_file import DEFAULT_CONFIG_PATH, ConfigStore, UserConfig
 from oceanx.radio.channels import parse_config_channels
 from oceanx.ais.channels import parse_ais_channels
+from oceanx.radio.backends import resolve_backend
 
 BANNER = r"""
    ___                    __  __
@@ -26,12 +27,12 @@ BANNER = r"""
 def build_parser(defaults: UserConfig) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=__app_name__,
-        description=f"{__app_name__} v{__version__} — marine AIS + VHF receiver for HackRF",
+        description=f"{__app_name__} v{__version__} — marine AIS + VHF receiver for HackRF or RTL-SDR",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             f"Config file: {DEFAULT_CONFIG_PATH}\n"
             "CLI options override config values.\n"
-            "Setup: brew install hackrf && make dev-install"
+            "Setup: brew install hackrf or brew install rtl-sdr, then make dev-install"
         ),
     )
     parser.add_argument(
@@ -42,7 +43,13 @@ def build_parser(defaults: UserConfig) -> argparse.ArgumentParser:
     parser.add_argument(
         "--file",
         default=defaults.replay_file,
-        help="Replay raw HackRF IQ capture instead of live RX",
+        help="Replay raw IQ capture instead of live RX",
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "hackrf", "rtlsdr"],
+        default=defaults.backend,
+        help="SDR backend preference (falls back to the other device if unavailable)",
     )
     parser.add_argument(
         "--lna", type=int, default=defaults.lna, help="LNA gain 0-40 dB"
@@ -105,9 +112,12 @@ def resolve_config(args: argparse.Namespace, user: UserConfig) -> SnifferConfig:
     radio = parse_config_channels(user.radio_channels)
     ais = parse_ais_channels(user.ais_channels)
     return SnifferConfig.from_preset(
+        backend=resolve_backend(args.backend),
         lna=args.lna,
         vga=args.vga,
         amp_enable=args.amp_enable,
+        tuner_gain=user.tuner_gain,
+        ppm_error=user.ppm_error,
         refresh_hz=args.refresh,
         sound_enabled=args.sound_enabled,
         radio_channels=radio,

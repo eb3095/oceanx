@@ -9,8 +9,8 @@ cd "$ROOT"
 
 export PYTHONPATH="${ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 
-if ! command -v hackrf_transfer >/dev/null 2>&1; then
-  echo "hackrf_transfer not found. Install with: brew install hackrf" >&2
+if ! command -v hackrf_transfer >/dev/null 2>&1 && ! command -v rtl_sdr >/dev/null 2>&1; then
+  echo "No SDR capture binary found. Install hackrf_transfer (brew install hackrf) or rtl_sdr (brew install rtl-sdr)." >&2
   exit 1
 fi
 

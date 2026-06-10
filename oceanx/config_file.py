@@ -19,9 +19,12 @@ DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "config.json"
 
 @dataclass
 class UserConfig:
+    backend: str = "auto"
     lna: int = 32
     vga: int = 48
     amp_enable: bool = True
+    tuner_gain: int = 40
+    ppm_error: int = 0
     sound_enabled: bool = True
     refresh_hz: float = 2.0
     show_banner: bool = True
@@ -48,10 +51,15 @@ class UserConfig:
     def to_sniffer_config(self) -> SnifferConfig:
         radio = parse_config_channels(self.radio_channels)
         ais = parse_ais_channels(self.ais_channels)
+        from oceanx.radio.backends import resolve_backend
+
         return SnifferConfig.from_preset(
+            backend=resolve_backend(self.backend),
             lna=self.lna,
             vga=self.vga,
             amp_enable=self.amp_enable,
+            tuner_gain=self.tuner_gain,
+            ppm_error=self.ppm_error,
             refresh_hz=self.refresh_hz,
             sound_enabled=self.sound_enabled,
             radio_channels=radio,
